@@ -65,19 +65,26 @@ void hdfsThreadDestructor(void *v)
         (*env)->ExceptionClear(env);
       }
     } else {
-      ret = (*vm)->DetachCurrentThread(vm);
+      // Buggy JVM support, DetachCurrentThread throws exceptions sometimes.
+      // Workaround is to try to AttachCurrentThread as it is a noop if the
+      // Thread is already attached.
+      ret = (*vm)->AttachCurrentThread(vm, (void*)&env, 0);
+      if (ret == JNI_OK) {
+        ret = (*vm)->DetachCurrentThread(vm);
 
-      if (ret != JNI_OK) {
-        jthr = (*env)->ExceptionOccurred(env);
-        if (jthr) {
-          (*env)->ExceptionDescribe(env);
-          (*env)->ExceptionClear(env);
+        if (ret != JNI_OK) {
+          jthr = (*env)->ExceptionOccurred(env);
+          if (jthr) {
+            (*env)->ExceptionDescribe(env);
+            (*env)->ExceptionClear(env);
+          }
+          get_current_thread_id(env, thr_name, MAXTHRID);
+
+          fprintf(stderr, "hdfsThreadDestructor: Unable to detach thread %s "
+             "from the JVM. Error code: %d\n", thr_name, ret);
         }
-        get_current_thread_id(env, thr_name, MAXTHRID);
-
-        fprintf(stderr, "hdfsThreadDestructor: Unable to detach thread %s "
-            "from the JVM. Error code: %d\n", thr_name, ret);
       }
+      
     }
   }
 
